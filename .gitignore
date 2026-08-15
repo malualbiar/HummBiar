@@ -1,0 +1,18 @@
+# Build artifacts
+build/
+*.dir/
+*.log
+*.exe
+*.vst3
+*.lib
+*.exp
+*.obj
+*.pdb
+*.sln
+*.vcxproj*
+
+# IDE / OS files
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
