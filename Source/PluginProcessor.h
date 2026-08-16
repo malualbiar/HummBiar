@@ -3,6 +3,7 @@
 #include "PitchDetector.h"
 #include "NoteTracker.h"
 #include "InstrumentPresets.h"
+#include "BasicPitchEngine.h"
 
 struct SimpleOscillator {
     double phase = 0.0;
@@ -275,8 +276,11 @@ public:
     std::atomic<int>   detectedScale { 1 };  // 1=Major, 2=Minor
     void runKeyDetection(); // call after stopRecording()
 
+    std::atomic<bool> useNeuralEngine { false };
+
 private:
     PitchDetector pitchDetector;
+    BasicPitchEngine basicPitchEngine;
     NoteTracker noteTracker;
     SimpleOscillator oscillator;
 

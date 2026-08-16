@@ -27,6 +27,8 @@ target_sources(HumToMIDI PRIVATE
     Source/MidiConverter.cpp
     Source/InstrumentPresets.h
     Source/InstrumentPresets.cpp
+    Source/BasicPitchEngine.h
+    Source/BasicPitchEngine.cpp
 )
 
 target_link_libraries(HumToMIDI PRIVATE

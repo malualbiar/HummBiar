@@ -534,6 +534,38 @@ private:
     HumToMIDIProcessor& processor;
 };
 
+class NeuralEngineButton : public juce::Button {
+public:
+    NeuralEngineButton(HumToMIDIProcessor& p) : juce::Button("Neural"), processor(p) {
+        setClickingTogglesState(true);
+    }
+
+    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override {
+        auto bounds = getLocalBounds().toFloat();
+        bool isNeural = processor.useNeuralEngine.load();
+
+        juce::Colour bg = isNeural ? juce::Colour(0xff8b5cf6) : 
+                          shouldDrawButtonAsDown ? juce::Colour(0xff15161a) : 
+                          shouldDrawButtonAsHighlighted ? juce::Colour(0xff2d2e36) : juce::Colour(0xff222329);
+        g.setColour(bg);
+        g.fillRoundedRectangle(bounds, 4.0f);
+        g.setColour(juce::Colour(0xff2a2b32));
+        g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+
+        g.setColour(isNeural ? juce::Colours::white : juce::Colour(0xffa78bfa));
+        g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
+
+        if (isNeural) {
+            g.drawText("AI PITCH", bounds, juce::Justification::centred);
+        } else {
+            g.drawText("DSP YIN", bounds, juce::Justification::centred);
+        }
+    }
+
+private:
+    HumToMIDIProcessor& processor;
+};
+
 class HumToMIDIEditor : public juce::AudioProcessorEditor, 
                          public juce::Timer,
                          public juce::DragAndDropContainer {
@@ -561,6 +593,7 @@ private:
     juce::ComboBox inputSourceSelector;
     juce::Label presetLabel;
     juce::ComboBox presetSelector;
+    NeuralEngineButton neuralButton;
     CalibrateIconButton calibrateButton;
     CopyMidiIconButton copyMidiButton;
     LoopIconButton loopButton;

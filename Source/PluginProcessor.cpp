@@ -14,6 +14,7 @@ HumToMIDIProcessor::~HumToMIDIProcessor() {}
 
 void HumToMIDIProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     pitchDetector = PitchDetector(static_cast<float>(sampleRate), samplesPerBlock);
+    basicPitchEngine.prepareToPlay(static_cast<float>(sampleRate), samplesPerBlock);
     noteTracker = NoteTracker(static_cast<float>(sampleRate));
 }
 
@@ -120,7 +121,17 @@ void HumToMIDIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
 
             float currentGate = noiseGateCutoff.load();
             float currentOctaveLock = octaveLock.load();
-            PitchResult result = pitchDetector.process(channelData, numSamples, currentGate, currentOctaveLock);
+
+            PitchResult result;
+            if (useNeuralEngine.load()) {
+                basicPitchEngine.pushAudioBlock(channelData, numSamples);
+                float blockRms = 0.0f;
+                for (int i = 0; i < numSamples; ++i) blockRms += channelData[i] * channelData[i];
+                blockRms = std::sqrt(blockRms / static_cast<float>(numSamples));
+                result = basicPitchEngine.getPitchResult(blockRms);
+            } else {
+                result = pitchDetector.process(channelData, numSamples, currentGate, currentOctaveLock);
+            }
 
             float timeElapsedMs = (static_cast<float>(numSamples) / static_cast<float>(sampleRate)) * 1000.0f;
             

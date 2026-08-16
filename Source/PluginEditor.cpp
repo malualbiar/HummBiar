@@ -4,7 +4,7 @@
 
 HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p), visualizer(p),
-      calibrateButton(p), loopButton(p), playButton(p), recordButton(p)
+      neuralButton(p), calibrateButton(p), loopButton(p), playButton(p), recordButton(p)
 {
     setSize(920, 640);
     setLookAndFeel(&customLookAndFeel);
@@ -55,6 +55,16 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
         }
     };
     addAndMakeVisible(presetSelector);
+
+    // Neural Engine Toggle Button
+    neuralButton.setToggleState(audioProcessor.useNeuralEngine.load(), juce::dontSendNotification);
+    neuralButton.onClick = [this] {
+        bool newState = !audioProcessor.useNeuralEngine.load();
+        audioProcessor.useNeuralEngine.store(newState);
+        neuralButton.setToggleState(newState, juce::dontSendNotification);
+        neuralButton.repaint();
+    };
+    addAndMakeVisible(neuralButton);
 
     // Header Buttons
     calibrateButton.onClick = [this] {
@@ -399,6 +409,8 @@ void HumToMIDIEditor::resized() {
     copyMidiButton.setBounds(header.removeFromRight(80).reduced(0, 8));
     header.removeFromRight(btnPad);
     calibrateButton.setBounds(header.removeFromRight(75).reduced(0, 8));
+    header.removeFromRight(btnPad);
+    neuralButton.setBounds(header.removeFromRight(85).reduced(0, 8));
     
     // Footer
     auto footer = bounds.removeFromBottom(130);
