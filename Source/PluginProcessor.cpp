@@ -205,6 +205,17 @@ void HumToMIDIProcessor::applyPreset(int presetIndex) {
     }
 }
 
+void HumToMIDIProcessor::applyInputSourceProfile(int sourceIndex) {
+    selectedInputSource.store(sourceIndex);
+    auto profile = InstrumentPresets::getProfileByIndex(sourceIndex);
+    inputSensitivity.store(profile.sensitivity);
+    noiseGateCutoff.store(profile.noiseGateCutoff);
+    attackSpeedMs.store(profile.attackSpeedMs);
+    pitchStabilityCents.store(profile.pitchStabilityCents);
+    octaveLock.store(profile.octaveLock);
+    minNoteDurationMs.store(profile.minNoteDurationMs);
+}
+
 void HumToMIDIProcessor::startCalibration() {
     maxNoiseRmsObserved = 0.0f;
     calibrationTimeSec = 0.0;

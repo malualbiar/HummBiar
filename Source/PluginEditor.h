@@ -557,6 +557,8 @@ private:
 
     // Header Components
     juce::Label titleLabel;
+    juce::Label inputSourceLabel;
+    juce::ComboBox inputSourceSelector;
     juce::Label presetLabel;
     juce::ComboBox presetSelector;
     CalibrateIconButton calibrateButton;

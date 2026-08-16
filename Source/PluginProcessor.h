@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "PitchDetector.h"
 #include "NoteTracker.h"
+#include "InstrumentPresets.h"
 
 struct SimpleOscillator {
     double phase = 0.0;
@@ -235,6 +236,9 @@ public:
     
     std::atomic<int> selectedPreset { 0 }; // 0 = Custom, 1 = PC Mic, 2 = Headset, 3 = Fast Melodies, 4 = Solid Chords
     void applyPreset(int presetIndex);
+
+    std::atomic<int> selectedInputSource { 0 }; // 0 = Vocal, 1 = Whistle, 2 = Guitar, 3 = Bass, 4 = Wind, 5 = Percussion
+    void applyInputSourceProfile(int sourceIndex);
     
     std::atomic<int> selectedKey { 0 }; // 0 = C, 1 = C#, ...
     std::atomic<int> selectedScale { 0 }; // 0 = Chromatic, 1 = Major, ...

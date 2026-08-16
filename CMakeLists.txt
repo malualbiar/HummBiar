@@ -25,6 +25,8 @@ target_sources(HumToMIDI PRIVATE
     Source/NoteTracker.cpp
     Source/MidiConverter.h
     Source/MidiConverter.cpp
+    Source/InstrumentPresets.h
+    Source/InstrumentPresets.cpp
 )
 
 target_link_libraries(HumToMIDI PRIVATE

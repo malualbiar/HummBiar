@@ -15,8 +15,28 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     titleLabel.setFont(juce::FontOptions(14.0f).withStyle("Bold"));
     addAndMakeVisible(titleLabel);
 
+    // Input Source Selector
+    inputSourceLabel.setText("Source:", juce::dontSendNotification);
+    inputSourceLabel.setColour(juce::Label::textColourId, juce::Colour(0xffd0d0d0));
+    inputSourceLabel.setFont(juce::FontOptions(11.0f));
+    addAndMakeVisible(inputSourceLabel);
+
+    auto sourceNames = InstrumentPresets::getSourceNames();
+    for (size_t i = 0; i < sourceNames.size(); ++i) {
+        inputSourceSelector.addItem(sourceNames[i], static_cast<int>(i + 1));
+    }
+    inputSourceSelector.setSelectedId(audioProcessor.selectedInputSource.load() + 1, juce::dontSendNotification);
+    inputSourceSelector.onChange = [this] {
+        int id = inputSourceSelector.getSelectedId() - 1;
+        if (id >= 0) {
+            audioProcessor.applyInputSourceProfile(id);
+            updateSliderValuesFromProcessor();
+        }
+    };
+    addAndMakeVisible(inputSourceSelector);
+
     // Preset Selector
-    presetLabel.setText("Preset:", juce::dontSendNotification);
+    presetLabel.setText("Style:", juce::dontSendNotification);
     presetLabel.setColour(juce::Label::textColourId, juce::Colour(0xffd0d0d0));
     presetLabel.setFont(juce::FontOptions(11.0f));
     addAndMakeVisible(presetLabel);
@@ -358,10 +378,13 @@ void HumToMIDIEditor::resized() {
     auto bounds = getLocalBounds();
     
     auto header = bounds.removeFromTop(50);
-    titleLabel.setBounds(header.removeFromLeft(150).reduced(15, 0));
+    titleLabel.setBounds(header.removeFromLeft(110).reduced(5, 0));
     
-    presetLabel.setBounds(header.removeFromLeft(45).reduced(0, 15));
-    presetSelector.setBounds(header.removeFromLeft(145).reduced(0, 12));
+    inputSourceLabel.setBounds(header.removeFromLeft(45).reduced(0, 15));
+    inputSourceSelector.setBounds(header.removeFromLeft(155).reduced(0, 12));
+
+    presetLabel.setBounds(header.removeFromLeft(40).reduced(0, 15));
+    presetSelector.setBounds(header.removeFromLeft(130).reduced(0, 12));
     
     header.removeFromRight(15);
     int btnPad = 6;
