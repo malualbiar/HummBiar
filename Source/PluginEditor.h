@@ -353,8 +353,8 @@ public:
         g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 
         g.setColour(isPreRoll ? juce::Colours::black : juce::Colour(0xfffacc15));
-        g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
-        g.drawText("3s PRE-ROLL", bounds, juce::Justification::centred);
+        g.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
+        g.drawText("321", bounds, juce::Justification::centred);
     }
 
 private:

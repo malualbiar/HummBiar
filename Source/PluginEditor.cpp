@@ -78,13 +78,8 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     };
     addAndMakeVisible(preRollButton);
 
-    // Take History Selector
-    historyLabel.setText("History:", juce::dontSendNotification);
-    historyLabel.setColour(juce::Label::textColourId, juce::Colour(0xffd0d0d0));
-    historyLabel.setFont(juce::FontOptions(11.0f));
-    addAndMakeVisible(historyLabel);
-
-    historySelector.addItem("No Takes", 1);
+    // Take History Selector Button
+    historySelector.addItem("History", 1);
     historySelector.setSelectedId(1, juce::dontSendNotification);
     historySelector.onChange = [this] {
         int id = historySelector.getSelectedId() - 1;
@@ -428,9 +423,9 @@ void HumToMIDIEditor::resized() {
 
     presetLabel.setBounds(header.removeFromLeft(36).reduced(0, 15));
     presetSelector.setBounds(header.removeFromLeft(115).reduced(0, 12));
+    header.removeFromLeft(8);
     
-    historyLabel.setBounds(header.removeFromLeft(42).reduced(0, 15));
-    historySelector.setBounds(header.removeFromLeft(100).reduced(0, 12));
+    historySelector.setBounds(header.removeFromLeft(110).reduced(0, 12));
 
     header.removeFromRight(10);
     int btnPad = 4;
@@ -444,7 +439,7 @@ void HumToMIDIEditor::resized() {
     header.removeFromRight(btnPad);
     calibrateButton.setBounds(header.removeFromRight(50).reduced(0, 8));
     header.removeFromRight(btnPad);
-    preRollButton.setBounds(header.removeFromRight(82).reduced(0, 8));
+    preRollButton.setBounds(header.removeFromRight(45).reduced(0, 8));
     header.removeFromRight(btnPad);
     neuralButton.setBounds(header.removeFromRight(76).reduced(0, 8));
     
@@ -550,16 +545,24 @@ void HumToMIDIEditor::timerCallback() {
         preRollButton.setToggleState(audioProcessor.usePreRoll.load(), juce::dontSendNotification);
     }
 
-    // Sync Take History Dropdown
+    // Sync Take History Dropdown Button
     auto takeNames = audioProcessor.getTakeHistoryNames();
-    if (takeNames.size() != static_cast<size_t>(historySelector.getNumItems()) ||
-        (!takeNames.empty() && historySelector.getItemText(0) == "No Takes")) {
-        historySelector.clear(juce::dontSendNotification);
-        for (size_t i = 0; i < takeNames.size(); ++i) {
-            historySelector.addItem(takeNames[i], static_cast<int>(i + 1));
+    if (takeNames.empty()) {
+        if (historySelector.getNumItems() != 1 || historySelector.getItemText(0) != "History") {
+            historySelector.clear(juce::dontSendNotification);
+            historySelector.addItem("History", 1);
+            historySelector.setSelectedId(1, juce::dontSendNotification);
         }
-        if (!takeNames.empty()) {
-            historySelector.setSelectedId(audioProcessor.selectedTakeIndex.load() + 1, juce::dontSendNotification);
+    } else {
+        if (takeNames.size() != static_cast<size_t>(historySelector.getNumItems()) || historySelector.getItemText(0) == "History") {
+            historySelector.clear(juce::dontSendNotification);
+            for (size_t i = 0; i < takeNames.size(); ++i) {
+                historySelector.addItem(takeNames[i], static_cast<int>(i + 1));
+            }
+            int selIdx = audioProcessor.selectedTakeIndex.load();
+            if (selIdx >= 0 && selIdx < static_cast<int>(takeNames.size())) {
+                historySelector.setSelectedId(selIdx + 1, juce::dontSendNotification);
+            }
         }
     }
 
