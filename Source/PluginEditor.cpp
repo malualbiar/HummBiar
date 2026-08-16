@@ -6,9 +6,9 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p), visualizer(p),
       preRollButton(p), neuralButton(p), calibrateButton(p), loopButton(p), playButton(p), recordButton(p)
 {
-    setSize(1100, 750);
+    setSize(1220, 750);
     setResizable(true, true);
-    setResizeLimits(960, 600, 1920, 1200);
+    setResizeLimits(1050, 600, 1920, 1200);
     setLookAndFeel(&customLookAndFeel);
 
     // Title
@@ -421,32 +421,32 @@ void HumToMIDIEditor::resized() {
     auto bounds = getLocalBounds();
     
     auto header = bounds.removeFromTop(50);
-    titleLabel.setBounds(header.removeFromLeft(110).reduced(5, 0));
+    titleLabel.setBounds(header.removeFromLeft(105).reduced(4, 0));
     
-    inputSourceLabel.setBounds(header.removeFromLeft(45).reduced(0, 15));
-    inputSourceSelector.setBounds(header.removeFromLeft(140).reduced(0, 12));
+    inputSourceLabel.setBounds(header.removeFromLeft(42).reduced(0, 15));
+    inputSourceSelector.setBounds(header.removeFromLeft(130).reduced(0, 12));
 
-    presetLabel.setBounds(header.removeFromLeft(40).reduced(0, 15));
-    presetSelector.setBounds(header.removeFromLeft(125).reduced(0, 12));
+    presetLabel.setBounds(header.removeFromLeft(36).reduced(0, 15));
+    presetSelector.setBounds(header.removeFromLeft(115).reduced(0, 12));
     
-    historyLabel.setBounds(header.removeFromLeft(45).reduced(0, 15));
-    historySelector.setBounds(header.removeFromLeft(110).reduced(0, 12));
+    historyLabel.setBounds(header.removeFromLeft(42).reduced(0, 15));
+    historySelector.setBounds(header.removeFromLeft(100).reduced(0, 12));
 
-    header.removeFromRight(15);
-    int btnPad = 6;
-    recordButton.setBounds(header.removeFromRight(80).reduced(0, 8));
+    header.removeFromRight(10);
+    int btnPad = 4;
+    recordButton.setBounds(header.removeFromRight(75).reduced(0, 8));
     header.removeFromRight(btnPad);
-    playButton.setBounds(header.removeFromRight(42).reduced(0, 8));
+    playButton.setBounds(header.removeFromRight(40).reduced(0, 8));
     header.removeFromRight(btnPad);
-    loopButton.setBounds(header.removeFromRight(48).reduced(0, 8));
+    loopButton.setBounds(header.removeFromRight(42).reduced(0, 8));
     header.removeFromRight(btnPad);
-    copyMidiButton.setBounds(header.removeFromRight(70).reduced(0, 8));
+    copyMidiButton.setBounds(header.removeFromRight(55).reduced(0, 8));
     header.removeFromRight(btnPad);
-    calibrateButton.setBounds(header.removeFromRight(65).reduced(0, 8));
+    calibrateButton.setBounds(header.removeFromRight(50).reduced(0, 8));
     header.removeFromRight(btnPad);
-    preRollButton.setBounds(header.removeFromRight(95).reduced(0, 8));
+    preRollButton.setBounds(header.removeFromRight(82).reduced(0, 8));
     header.removeFromRight(btnPad);
-    neuralButton.setBounds(header.removeFromRight(75).reduced(0, 8));
+    neuralButton.setBounds(header.removeFromRight(76).reduced(0, 8));
     
     // Footer
     auto footer = bounds.removeFromBottom(130);
