@@ -78,6 +78,23 @@ void HumToMIDIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
         currentPitch.store(0.0f);
 
     } else {
+        // Pre-Roll Countdown Mode
+        if (isPreRolling.load()) {
+            float bufferSec = static_cast<float>(buffer.getNumSamples()) / static_cast<float>(sampleRate);
+            float currentCD = preRollCountdownSec.load();
+            float nextCD = currentCD - bufferSec;
+            preRollCountdownSec.store(nextCD);
+
+            if (nextCD <= 0.0f) {
+                isPreRolling.store(false);
+                const juce::ScopedLock sl(recordLock);
+                recordedSequence.clear();
+                rawRecordedSequence.clear();
+                recordingTimeSec = 0.0;
+                isRecordingMidi.store(true);
+            }
+        }
+
         // Normal Audio Pitch Tracking mode
         float sens = inputSensitivity.load();
         buffer.applyGain(sens);
@@ -273,14 +290,25 @@ void HumToMIDIProcessor::applyKeyAndScaleSnapping() {
 
 void HumToMIDIProcessor::startRecording() {
     const juce::ScopedLock sl(recordLock);
-    recordedSequence.clear();
-    rawRecordedSequence.clear();
-    recordingTimeSec = 0.0;
-    isRecordingMidi.store(true);
+    if (usePreRoll.load()) {
+        isPreRolling.store(true);
+        preRollCountdownSec.store(3.0f);
+    } else {
+        isPreRolling.store(false);
+        recordedSequence.clear();
+        rawRecordedSequence.clear();
+        recordingTimeSec = 0.0;
+        isRecordingMidi.store(true);
+    }
 }
 
 void HumToMIDIProcessor::stopRecording() {
     const juce::ScopedLock sl(recordLock);
+    if (isPreRolling.load()) {
+        isPreRolling.store(false);
+        return;
+    }
+
     int activeNote = noteTracker.getCurrentNote();
     if (activeNote != -1) {
         auto msg = juce::MidiMessage::noteOff(1, activeNote);
@@ -299,6 +327,40 @@ void HumToMIDIProcessor::stopRecording() {
     if (autoDetectKey.load()) {
         runKeyDetection();
     }
+
+    // Save Take to History
+    if (recordedSequence.getNumEvents() > 0) {
+        MidiTake newTake;
+        newTake.takeNumber = static_cast<int>(takeHistory.size()) + 1;
+        int durSec = static_cast<int>(std::round(recordingTimeSec));
+        newTake.name = "Take " + juce::String(newTake.takeNumber) + " (" + juce::String(durSec) + "s)";
+        newTake.durationSec = recordingTimeSec;
+        newTake.sequence = recordedSequence;
+        newTake.timestamp = juce::Time::getCurrentTime();
+
+        if (takeHistory.size() >= 20) {
+            takeHistory.erase(takeHistory.begin());
+        }
+        takeHistory.push_back(newTake);
+        selectedTakeIndex.store(static_cast<int>(takeHistory.size()) - 1);
+    }
+}
+
+void HumToMIDIProcessor::loadTakeFromHistory(int takeIndex) {
+    const juce::ScopedLock sl(recordLock);
+    if (takeIndex < 0 || takeIndex >= static_cast<int>(takeHistory.size())) return;
+    recordedSequence = takeHistory[takeIndex].sequence;
+    rawRecordedSequence = recordedSequence;
+    recordingTimeSec = takeHistory[takeIndex].durationSec;
+    selectedTakeIndex.store(takeIndex);
+}
+
+std::vector<juce::String> HumToMIDIProcessor::getTakeHistoryNames() const {
+    std::vector<juce::String> names;
+    for (const auto& take : takeHistory) {
+        names.push_back(take.name);
+    }
+    return names;
 }
 
 void HumToMIDIProcessor::runKeyDetection() {

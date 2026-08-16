@@ -262,6 +262,24 @@ public:
             g.fillRect(px - 1.0f, 0.0f, 3.0f, drawHeight);
         }
 
+        // Draw Pre-Roll Count-in Overlay
+        if (processor.isPreRolling.load()) {
+            float cdSec = std::max(0.0f, processor.preRollCountdownSec.load());
+            int countNum = static_cast<int>(std::ceil(cdSec));
+            if (countNum <= 0) countNum = 1;
+
+            g.setColour(juce::Colour(0xaa000000));
+            g.fillRect(getLocalBounds());
+
+            g.setColour(juce::Colour(0xfffacc15));
+            g.setFont(juce::FontOptions(72.0f).withStyle("Bold"));
+            g.drawText(juce::String(countNum), getLocalBounds(), juce::Justification::centred);
+
+            g.setColour(juce::Colours::white);
+            g.setFont(juce::FontOptions(16.0f).withStyle("Bold"));
+            g.drawText("PRE-ROLL COUNT-IN", getLocalBounds().withTrimmedTop(140), juce::Justification::centred);
+        }
+
         if (!selectedNoteIndices.empty()) {
             g.setColour(juce::Colour(0xffffca58));
             g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
@@ -313,6 +331,33 @@ private:
         }
     }
 
+    HumToMIDIProcessor& processor;
+};
+
+class PreRollButton : public juce::Button {
+public:
+    PreRollButton(HumToMIDIProcessor& p) : juce::Button("PreRoll"), processor(p) {
+        setClickingTogglesState(true);
+    }
+
+    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override {
+        auto bounds = getLocalBounds().toFloat();
+        bool isPreRoll = processor.usePreRoll.load();
+
+        juce::Colour bg = isPreRoll ? juce::Colour(0xfffacc15) : 
+                          shouldDrawButtonAsDown ? juce::Colour(0xff15161a) : 
+                          shouldDrawButtonAsHighlighted ? juce::Colour(0xff2d2e36) : juce::Colour(0xff222329);
+        g.setColour(bg);
+        g.fillRoundedRectangle(bounds, 4.0f);
+        g.setColour(juce::Colour(0xff2a2b32));
+        g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+
+        g.setColour(isPreRoll ? juce::Colours::black : juce::Colour(0xfffacc15));
+        g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
+        g.drawText("3s PRE-ROLL", bounds, juce::Justification::centred);
+    }
+
+private:
     HumToMIDIProcessor& processor;
 };
 
@@ -620,6 +665,9 @@ private:
     juce::ComboBox inputSourceSelector;
     juce::Label presetLabel;
     juce::ComboBox presetSelector;
+    juce::Label historyLabel;
+    juce::ComboBox historySelector;
+    PreRollButton preRollButton;
     NeuralEngineButton neuralButton;
     CalibrateIconButton calibrateButton;
     CopyMidiIconButton copyMidiButton;

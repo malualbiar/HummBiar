@@ -4,7 +4,7 @@
 
 HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p), visualizer(p),
-      neuralButton(p), calibrateButton(p), loopButton(p), playButton(p), recordButton(p)
+      preRollButton(p), neuralButton(p), calibrateButton(p), loopButton(p), playButton(p), recordButton(p)
 {
     setSize(1100, 750);
     setResizable(true, true);
@@ -67,6 +67,33 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
         neuralButton.repaint();
     };
     addAndMakeVisible(neuralButton);
+
+    // Pre-Roll Toggle Button
+    preRollButton.setToggleState(audioProcessor.usePreRoll.load(), juce::dontSendNotification);
+    preRollButton.onClick = [this] {
+        bool nextState = !audioProcessor.usePreRoll.load();
+        audioProcessor.usePreRoll.store(nextState);
+        preRollButton.setToggleState(nextState, juce::dontSendNotification);
+        preRollButton.repaint();
+    };
+    addAndMakeVisible(preRollButton);
+
+    // Take History Selector
+    historyLabel.setText("History:", juce::dontSendNotification);
+    historyLabel.setColour(juce::Label::textColourId, juce::Colour(0xffd0d0d0));
+    historyLabel.setFont(juce::FontOptions(11.0f));
+    addAndMakeVisible(historyLabel);
+
+    historySelector.addItem("No Takes", 1);
+    historySelector.setSelectedId(1, juce::dontSendNotification);
+    historySelector.onChange = [this] {
+        int id = historySelector.getSelectedId() - 1;
+        if (id >= 0 && id < static_cast<int>(audioProcessor.takeHistory.size())) {
+            audioProcessor.loadTakeFromHistory(id);
+            visualizer.repaint();
+        }
+    };
+    addAndMakeVisible(historySelector);
 
     // Header Buttons
     calibrateButton.onClick = [this] {
@@ -397,11 +424,14 @@ void HumToMIDIEditor::resized() {
     titleLabel.setBounds(header.removeFromLeft(110).reduced(5, 0));
     
     inputSourceLabel.setBounds(header.removeFromLeft(45).reduced(0, 15));
-    inputSourceSelector.setBounds(header.removeFromLeft(155).reduced(0, 12));
+    inputSourceSelector.setBounds(header.removeFromLeft(140).reduced(0, 12));
 
     presetLabel.setBounds(header.removeFromLeft(40).reduced(0, 15));
-    presetSelector.setBounds(header.removeFromLeft(130).reduced(0, 12));
+    presetSelector.setBounds(header.removeFromLeft(125).reduced(0, 12));
     
+    historyLabel.setBounds(header.removeFromLeft(45).reduced(0, 15));
+    historySelector.setBounds(header.removeFromLeft(110).reduced(0, 12));
+
     header.removeFromRight(15);
     int btnPad = 6;
     recordButton.setBounds(header.removeFromRight(80).reduced(0, 8));
@@ -410,35 +440,24 @@ void HumToMIDIEditor::resized() {
     header.removeFromRight(btnPad);
     loopButton.setBounds(header.removeFromRight(48).reduced(0, 8));
     header.removeFromRight(btnPad);
-    copyMidiButton.setBounds(header.removeFromRight(80).reduced(0, 8));
+    copyMidiButton.setBounds(header.removeFromRight(70).reduced(0, 8));
     header.removeFromRight(btnPad);
-    calibrateButton.setBounds(header.removeFromRight(75).reduced(0, 8));
+    calibrateButton.setBounds(header.removeFromRight(65).reduced(0, 8));
     header.removeFromRight(btnPad);
-    neuralButton.setBounds(header.removeFromRight(85).reduced(0, 8));
+    preRollButton.setBounds(header.removeFromRight(95).reduced(0, 8));
+    header.removeFromRight(btnPad);
+    neuralButton.setBounds(header.removeFromRight(75).reduced(0, 8));
     
     // Footer
     auto footer = bounds.removeFromBottom(130);
     auto controlBar = footer.removeFromTop(75);
-    
-    // Top Row of footer: Dropdowns
-    auto dropRow = controlBar.removeFromLeft(330);
-    waveformLabel.setBounds(dropRow.removeFromLeft(42).reduced(0, 24));
-    waveformSelector.setBounds(dropRow.removeFromLeft(70).reduced(0, 22));
-    dropRow.removeFromLeft(6);
-
-    chordLabel.setBounds(dropRow.removeFromLeft(40).reduced(0, 24));
-    chordSelector.setBounds(dropRow.removeFromLeft(85).reduced(0, 22));
-    dropRow.removeFromLeft(6);
-
-    quantizeLabel.setBounds(dropRow.removeFromLeft(50).reduced(0, 24));
-    quantizeSelector.setBounds(dropRow.removeFromLeft(80).reduced(0, 22));
     
     // 7 Knobs on the right of controlBar
     controlBar.removeFromRight(10);
     auto placeKnob = [&](juce::Slider& s, juce::Label& l, int w = 62) {
         auto area = controlBar.removeFromRight(w);
         s.setBounds(area.removeFromTop(46).reduced(6, 3));
-        l.setBounds(area);
+        l.setBounds(area.reduced(0, 0));
     };
 
     placeKnob(minNoteSlider, minNoteLabel);
@@ -450,28 +469,27 @@ void HumToMIDIEditor::resized() {
     placeKnob(quantizeStrengthSlider, quantizeStrengthLabel);
 
     // Status Bar: 4 info columns, then Key / Scale / AUTO KEY
-    int colWidth = footer.getWidth() / 7;
-    statusLiveSignal.setBounds(footer.removeFromLeft(colWidth).reduced(15, 2));
-    statusRms.setBounds(footer.removeFromLeft(colWidth).reduced(15, 4));
-    statusPitch.setBounds(footer.removeFromLeft(colWidth).reduced(15, 4));
-    statusBpm.setBounds(footer.removeFromLeft(colWidth).reduced(15, 4));
+    auto statusArea = footer;
+    int colWidth = statusArea.getWidth() / 7;
+    statusLiveSignal.setBounds(statusArea.removeFromLeft(colWidth).reduced(15, 2));
+    statusRms.setBounds(statusArea.removeFromLeft(colWidth).reduced(15, 4));
+    statusPitch.setBounds(statusArea.removeFromLeft(colWidth).reduced(15, 4));
+    statusBpm.setBounds(statusArea.removeFromLeft(colWidth).reduced(15, 4));
     
-    auto keyArea = footer.removeFromLeft(colWidth).reduced(8, 4);
+    auto keyArea = statusArea.removeFromLeft(colWidth).reduced(8, 4);
     keyLabel.setBounds(keyArea.removeFromTop(18));
     keySelector.setBounds(keyArea.removeFromTop(24));
     
-    auto scaleArea = footer.removeFromLeft(colWidth).reduced(8, 4);
+    auto scaleArea = statusArea.removeFromLeft(colWidth).reduced(8, 4);
     scaleLabel.setBounds(scaleArea.removeFromTop(18));
     scaleSelector.setBounds(scaleArea.removeFromTop(24));
 
-    // AUTO KEY button in the last column
-    auto autoKeyArea = footer.removeFromLeft(colWidth).reduced(6, 4);
+    auto autoKeyArea = statusArea.removeFromLeft(colWidth).reduced(6, 4);
     autoKeyButton.setBounds(autoKeyArea.removeFromTop(26));
     detectedKeyLabel.setBounds(autoKeyArea.removeFromTop(16));
 
-
-    // Visualizer gets remaining space
-    visualizer.setBounds(bounds.reduced(10));
+    // Visualizer fills middle canvas
+    visualizer.setBounds(bounds);
 }
 
 void HumToMIDIEditor::timerCallback() {
@@ -508,10 +526,28 @@ void HumToMIDIEditor::timerCallback() {
     playButton.repaint();
     recordButton.repaint();
     loopButton.repaint();
+    preRollButton.repaint();
+    neuralButton.repaint();
 
-    // Sync loop button toggle state
+    // Sync button toggle states
     if (loopButton.getToggleState() != audioProcessor.isLooping.load()) {
         loopButton.setToggleState(audioProcessor.isLooping.load(), juce::dontSendNotification);
+    }
+    if (preRollButton.getToggleState() != audioProcessor.usePreRoll.load()) {
+        preRollButton.setToggleState(audioProcessor.usePreRoll.load(), juce::dontSendNotification);
+    }
+
+    // Sync Take History Dropdown
+    auto takeNames = audioProcessor.getTakeHistoryNames();
+    if (takeNames.size() != static_cast<size_t>(historySelector.getNumItems()) ||
+        (!takeNames.empty() && historySelector.getItemText(0) == "No Takes")) {
+        historySelector.clear(juce::dontSendNotification);
+        for (size_t i = 0; i < takeNames.size(); ++i) {
+            historySelector.addItem(takeNames[i], static_cast<int>(i + 1));
+        }
+        if (!takeNames.empty()) {
+            historySelector.setSelectedId(audioProcessor.selectedTakeIndex.load() + 1, juce::dontSendNotification);
+        }
     }
 
     // Sync key/scale dropdowns to processor (picks up auto-detected values)

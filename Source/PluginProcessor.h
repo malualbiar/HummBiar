@@ -279,6 +279,25 @@ public:
     std::atomic<int>   detectedScale { 1 };  // 1=Major, 2=Minor
     void runKeyDetection(); // call after stopRecording()
 
+struct MidiTake {
+    int takeNumber = 1;
+    juce::String name;
+    double durationSec = 0.0;
+    juce::MidiMessageSequence sequence;
+    juce::Time timestamp;
+};
+
+    // Pre-Roll Count-in State
+    std::atomic<bool> usePreRoll { true };
+    std::atomic<bool> isPreRolling { false };
+    std::atomic<float> preRollCountdownSec { 3.0f };
+
+    // Take History Manager
+    std::vector<MidiTake> takeHistory;
+    std::atomic<int> selectedTakeIndex { -1 };
+    void loadTakeFromHistory(int takeIndex);
+    std::vector<juce::String> getTakeHistoryNames() const;
+
     std::atomic<bool> useNeuralEngine { false };
 
 private:
