@@ -138,7 +138,34 @@ void HumToMIDIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
             float atkSpeed = attackSpeedMs.load();
             float stability = pitchStabilityCents.load();
             float minDur = minNoteDurationMs.load();
-            noteTracker.process(result, timeElapsedMs, 0, midiMessages, atkSpeed, stability, minDur, selectedKey.load(), selectedScale.load());
+            int currentKey = selectedKey.load();
+            int currentScale = selectedScale.load();
+            int chordMode = selectedChordMode.load();
+
+            noteTracker.process(result, timeElapsedMs, 0, midiMessages, atkSpeed, stability, minDur, currentKey, currentScale);
+
+            // Expand live MIDI messages for DAW output and Live Recording if Chord Mode is enabled
+            if (chordMode != 0 && !midiMessages.isEmpty()) {
+                juce::MidiBuffer chordMidiBuffer;
+                for (const auto metadata : midiMessages) {
+                    auto msg = metadata.getMessage();
+                    int samplePos = metadata.samplePosition;
+                    if (msg.isNoteOn()) {
+                        std::vector<int> chordPitches = MidiConverter::generateScaleChord(msg.getNoteNumber(), currentKey, currentScale, chordMode);
+                        for (int pitch : chordPitches) {
+                            chordMidiBuffer.addEvent(juce::MidiMessage::noteOn(msg.getChannel(), pitch, msg.getVelocity()), samplePos);
+                        }
+                    } else if (msg.isNoteOff()) {
+                        std::vector<int> chordPitches = MidiConverter::generateScaleChord(msg.getNoteNumber(), currentKey, currentScale, chordMode);
+                        for (int pitch : chordPitches) {
+                            chordMidiBuffer.addEvent(juce::MidiMessage::noteOff(msg.getChannel(), pitch), samplePos);
+                        }
+                    } else {
+                        chordMidiBuffer.addEvent(msg, samplePos);
+                    }
+                }
+                midiMessages = chordMidiBuffer;
+            }
 
             // MIDI Recording Logic
             if (isRecordingMidi.load()) {
@@ -484,17 +511,21 @@ void HumToMIDIProcessor::sanitizeRecordedSequence() {
         }
     }
 
-    // STAGE 5: Minimum Duration Filter & Re-building clean sequence
+    // STAGE 5: Minimum Duration Filter & Chord Expansion for Piano Roll & Loop Playback
+    int chordMode = selectedChordMode.load();
     for (const auto& note : cleanNotes) {
         if ((note.endTimeSec - note.startTimeSec) >= minDurationSec) {
+            std::vector<int> chordPitches = MidiConverter::generateScaleChord(note.noteNumber, key, scale, chordMode);
             juce::uint8 vel = static_cast<juce::uint8>(juce::jlimit(1, 127, static_cast<int>(note.velocity * 127.0f)));
-            auto onMsg = juce::MidiMessage::noteOn(1, note.noteNumber, vel);
-            onMsg.setTimeStamp(note.startTimeSec);
-            recordedSequence.addEvent(onMsg);
+            for (int pitch : chordPitches) {
+                auto onMsg = juce::MidiMessage::noteOn(1, pitch, vel);
+                onMsg.setTimeStamp(note.startTimeSec);
+                recordedSequence.addEvent(onMsg);
 
-            auto offMsg = juce::MidiMessage::noteOff(1, note.noteNumber);
-            offMsg.setTimeStamp(note.endTimeSec);
-            recordedSequence.addEvent(offMsg);
+                auto offMsg = juce::MidiMessage::noteOff(1, pitch);
+                offMsg.setTimeStamp(note.endTimeSec);
+                recordedSequence.addEvent(offMsg);
+            }
         }
     }
 

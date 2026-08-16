@@ -96,71 +96,67 @@ std::vector<int> MidiConverter::generateScaleChord(int rootMidiNote, int keyRoot
     if (chordMode == 0) return { rootMidiNote }; // Single Note / Off
 
     int snappedRoot = snapToScale(rootMidiNote, keyRoot, scaleType);
-    std::vector<int> intervals = getScaleIntervals(scaleType);
-    int root = keyRoot % 12;
-    int numScaleNotes = static_cast<int>(intervals.size());
     
-    // Find scale degree of snappedRoot
-    int noteIn12 = (snappedRoot - root) % 12;
-    if (noteIn12 < 0) noteIn12 += 12;
-    
-    int scaleDegreeIndex = 0;
-    int minDiff = 100;
-    for (int i = 0; i < numScaleNotes; ++i) {
-        int diff = std::abs(intervals[i] - noteIn12);
-        if (diff < minDiff) {
-            minDiff = diff;
-            scaleDegreeIndex = i;
-        }
-    }
-    
-    auto getDiatonicNote = [&](int degreeOffset) -> int {
-        int targetDegree = scaleDegreeIndex + degreeOffset;
-        int octaveShift = 0;
-        while (targetDegree < 0) {
-            targetDegree += numScaleNotes;
-            octaveShift -= 1;
-        }
-        while (targetDegree >= numScaleNotes) {
-            targetDegree -= numScaleNotes;
-            octaveShift += 1;
-        }
-        int intervalFromRoot = intervals[targetDegree];
-        int notePitch12 = (root + intervalFromRoot) % 12;
-        int baseOctave = (snappedRoot - noteIn12) / 12;
-        int finalNote = (baseOctave + octaveShift) * 12 + notePitch12;
-        return std::clamp(finalNote, 0, 127);
-    };
-
     std::vector<int> chord;
     chord.push_back(snappedRoot);
 
+    if (chordMode == 5) { // Power Chord (1 - 5 - 8)
+        chord.push_back(std::clamp(snappedRoot + 7, 0, 127));
+        chord.push_back(std::clamp(snappedRoot + 12, 0, 127));
+        return chord;
+    }
+    if (chordMode == 6) { // Octaves (1 - 8)
+        chord.push_back(std::clamp(snappedRoot + 12, 0, 127));
+        return chord;
+    }
+
+    std::vector<int> scaleIntervals = getScaleIntervals(scaleType);
+    int key = keyRoot % 12;
+
+    // Build absolute pitch list of all scale notes across the entire MIDI pitch range (0 to 127)
+    std::vector<int> allScaleNotes;
+    for (int oct = -1; oct <= 10; ++oct) {
+        for (int interval : scaleIntervals) {
+            int note = oct * 12 + key + interval;
+            if (note >= 0 && note <= 127) {
+                allScaleNotes.push_back(note);
+            }
+        }
+    }
+    std::sort(allScaleNotes.begin(), allScaleNotes.end());
+    allScaleNotes.erase(std::unique(allScaleNotes.begin(), allScaleNotes.end()), allScaleNotes.end());
+
+    if (allScaleNotes.empty()) return chord;
+
+    // Find index of snappedRoot in allScaleNotes
+    auto it = std::lower_bound(allScaleNotes.begin(), allScaleNotes.end(), snappedRoot);
+    int rootIdx = static_cast<int>(std::distance(allScaleNotes.begin(), it));
+    if (rootIdx >= static_cast<int>(allScaleNotes.size())) rootIdx = static_cast<int>(allScaleNotes.size()) - 1;
+
+    auto getDiatonicNoteByIdx = [&](int degreeOffset) -> int {
+        int targetIdx = std::clamp(rootIdx + degreeOffset, 0, static_cast<int>(allScaleNotes.size()) - 1);
+        return allScaleNotes[targetIdx];
+    };
+
     switch (chordMode) {
         case 1: // Triad (1 - 3 - 5)
-            chord.push_back(getDiatonicNote(2)); // 3rd
-            chord.push_back(getDiatonicNote(4)); // 5th
+            chord.push_back(getDiatonicNoteByIdx(2)); // 3rd degree
+            chord.push_back(getDiatonicNoteByIdx(4)); // 5th degree
             break;
         case 2: // 7th Chord (1 - 3 - 5 - 7)
-            chord.push_back(getDiatonicNote(2)); // 3rd
-            chord.push_back(getDiatonicNote(4)); // 5th
-            chord.push_back(getDiatonicNote(6)); // 7th
+            chord.push_back(getDiatonicNoteByIdx(2)); // 3rd degree
+            chord.push_back(getDiatonicNoteByIdx(4)); // 5th degree
+            chord.push_back(getDiatonicNoteByIdx(6)); // 7th degree
             break;
         case 3: // 9th Chord (1 - 3 - 5 - 7 - 9)
-            chord.push_back(getDiatonicNote(2)); // 3rd
-            chord.push_back(getDiatonicNote(4)); // 5th
-            chord.push_back(getDiatonicNote(6)); // 7th
-            chord.push_back(getDiatonicNote(8)); // 9th
+            chord.push_back(getDiatonicNoteByIdx(2)); // 3rd degree
+            chord.push_back(getDiatonicNoteByIdx(4)); // 5th degree
+            chord.push_back(getDiatonicNoteByIdx(6)); // 7th degree
+            chord.push_back(getDiatonicNoteByIdx(8)); // 9th degree
             break;
         case 4: // Sus4 (1 - 4 - 5)
-            chord.push_back(getDiatonicNote(3)); // 4th
-            chord.push_back(getDiatonicNote(4)); // 5th
-            break;
-        case 5: // Power Chord (1 - 5 - 8)
-            chord.push_back(std::clamp(snappedRoot + 7, 0, 127));
-            chord.push_back(std::clamp(snappedRoot + 12, 0, 127));
-            break;
-        case 6: // Octaves (1 - 8)
-            chord.push_back(std::clamp(snappedRoot + 12, 0, 127));
+            chord.push_back(getDiatonicNoteByIdx(3)); // 4th degree
+            chord.push_back(getDiatonicNoteByIdx(4)); // 5th degree
             break;
         default:
             break;

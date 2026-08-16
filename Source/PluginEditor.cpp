@@ -150,6 +150,8 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     chordSelector.setSelectedId(audioProcessor.selectedChordMode.load() + 1, juce::dontSendNotification);
     chordSelector.onChange = [this] {
         audioProcessor.selectedChordMode.store(chordSelector.getSelectedId() - 1);
+        audioProcessor.applyKeyAndScaleSnapping();
+        visualizer.repaint();
     };
     addAndMakeVisible(chordSelector);
 
