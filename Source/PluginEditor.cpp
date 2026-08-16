@@ -6,7 +6,9 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p), visualizer(p),
       neuralButton(p), calibrateButton(p), loopButton(p), playButton(p), recordButton(p)
 {
-    setSize(920, 640);
+    setSize(1100, 750);
+    setResizable(true, true);
+    setResizeLimits(960, 600, 1920, 1200);
     setLookAndFeel(&customLookAndFeel);
 
     // Title

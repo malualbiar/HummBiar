@@ -375,6 +375,71 @@ void HumToMIDIProcessor::deleteNoteAtIndex(int noteOnEventIndex) {
     }
 }
 
+void HumToMIDIProcessor::deleteSelectedNotes(const std::vector<int>& noteOnIndices) {
+    if (noteOnIndices.empty()) return;
+    std::vector<int> sortedIndices = noteOnIndices;
+    std::sort(sortedIndices.begin(), sortedIndices.end(), std::greater<int>());
+    for (int idx : sortedIndices) {
+        deleteNoteAtIndex(idx);
+    }
+}
+
+void HumToMIDIProcessor::transposeSelectedNotes(const std::vector<int>& noteOnIndices, int semitoneDelta) {
+    if (noteOnIndices.empty() || semitoneDelta == 0) return;
+    const juce::ScopedLock sl(recordLock);
+    auto& seq = recordedSequence;
+
+    for (int idx : noteOnIndices) {
+        if (idx < 0 || idx >= seq.getNumEvents()) continue;
+        auto* onEvent = seq.getEventPointer(idx);
+        if (!onEvent || !onEvent->message.isNoteOn()) continue;
+
+        int noteNum = onEvent->message.getNoteNumber();
+        int newPitch = std::clamp(noteNum + semitoneDelta, 0, 127);
+        double onTime = onEvent->message.getTimeStamp();
+
+        onEvent->message.setNoteNumber(newPitch);
+
+        for (int i = idx + 1; i < seq.getNumEvents(); ++i) {
+            auto* ev = seq.getEventPointer(i);
+            if (ev && ev->message.isNoteOff() && ev->message.getNoteNumber() == noteNum && ev->message.getTimeStamp() >= onTime) {
+                ev->message.setNoteNumber(newPitch);
+                break;
+            }
+        }
+    }
+    seq.updateMatchedPairs();
+    rawRecordedSequence = seq;
+}
+
+void HumToMIDIProcessor::nudgeSelectedNotes(const std::vector<int>& noteOnIndices, double timeDeltaSec) {
+    if (noteOnIndices.empty() || timeDeltaSec == 0.0) return;
+    const juce::ScopedLock sl(recordLock);
+    auto& seq = recordedSequence;
+
+    for (int idx : noteOnIndices) {
+        if (idx < 0 || idx >= seq.getNumEvents()) continue;
+        auto* onEvent = seq.getEventPointer(idx);
+        if (!onEvent || !onEvent->message.isNoteOn()) continue;
+
+        int noteNum = onEvent->message.getNoteNumber();
+        double onTime = onEvent->message.getTimeStamp();
+        double newOnTime = std::max(0.0, onTime + timeDeltaSec);
+        onEvent->message.setTimeStamp(newOnTime);
+
+        for (int i = idx + 1; i < seq.getNumEvents(); ++i) {
+            auto* ev = seq.getEventPointer(i);
+            if (ev && ev->message.isNoteOff() && ev->message.getNoteNumber() == noteNum && ev->message.getTimeStamp() >= onTime) {
+                double dur = ev->message.getTimeStamp() - onTime;
+                ev->message.setTimeStamp(newOnTime + dur);
+                break;
+            }
+        }
+    }
+    seq.updateMatchedPairs();
+    rawRecordedSequence = seq;
+}
+
 void HumToMIDIProcessor::sanitizeRecordedSequence() {
     const juce::ScopedLock sl(recordLock);
     if (rawRecordedSequence.getNumEvents() == 0 && recordedSequence.getNumEvents() > 0) {

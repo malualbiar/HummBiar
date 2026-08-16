@@ -12,13 +12,45 @@ public:
 
     std::function<void()> onDragStart;
     bool hasDragged = false;
-    int selectedNoteOnIndex = -1;  // index into recordedSequence of the selected note-on event
+    std::set<int> selectedNoteIndices;
+
+    bool isBoxSelecting = false;
+    juce::Point<float> boxStartPos;
+    juce::Rectangle<float> boxRect;
 
     bool keyPressed(const juce::KeyPress& key, juce::Component*) override {
-        if ((key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
-            && selectedNoteOnIndex >= 0) {
-            processor.deleteNoteAtIndex(selectedNoteOnIndex);
-            selectedNoteOnIndex = -1;
+        int keyCode = key.getKeyCode();
+        if (selectedNoteIndices.empty()) return false;
+
+        std::vector<int> noteVec(selectedNoteIndices.begin(), selectedNoteIndices.end());
+
+        if (keyCode == juce::KeyPress::deleteKey || keyCode == juce::KeyPress::backspaceKey) {
+            processor.deleteSelectedNotes(noteVec);
+            selectedNoteIndices.clear();
+            repaint();
+            return true;
+        }
+        else if (keyCode == juce::KeyPress::upKey) {
+            int semitones = key.getModifiers().isShiftDown() ? 12 : 1;
+            processor.transposeSelectedNotes(noteVec, semitones);
+            repaint();
+            return true;
+        }
+        else if (keyCode == juce::KeyPress::downKey) {
+            int semitones = key.getModifiers().isShiftDown() ? -12 : -1;
+            processor.transposeSelectedNotes(noteVec, semitones);
+            repaint();
+            return true;
+        }
+        else if (keyCode == juce::KeyPress::leftKey) {
+            double dt = key.getModifiers().isShiftDown() ? -0.20 : -0.05;
+            processor.nudgeSelectedNotes(noteVec, dt);
+            repaint();
+            return true;
+        }
+        else if (keyCode == juce::KeyPress::rightKey) {
+            double dt = key.getModifiers().isShiftDown() ? 0.20 : 0.05;
+            processor.nudgeSelectedNotes(noteVec, dt);
             repaint();
             return true;
         }
@@ -29,25 +61,47 @@ public:
         hasDragged = false;
         grabKeyboardFocus();
 
-        // Hit-test: find which note-on event the user clicked
         int hit = hitTestNote(e.x, e.y);
         if (hit >= 0) {
             if (e.mods.isRightButtonDown()) {
-                // Right-click = instant delete
                 processor.deleteNoteAtIndex(hit);
-                selectedNoteOnIndex = -1;
+                selectedNoteIndices.erase(hit);
+            } else if (e.mods.isShiftDown()) {
+                if (selectedNoteIndices.count(hit)) selectedNoteIndices.erase(hit);
+                else selectedNoteIndices.insert(hit);
             } else {
-                selectedNoteOnIndex = (selectedNoteOnIndex == hit) ? -1 : hit;
+                if (selectedNoteIndices.find(hit) == selectedNoteIndices.end()) {
+                    selectedNoteIndices.clear();
+                    selectedNoteIndices.insert(hit);
+                }
             }
-            repaint();
+            isBoxSelecting = false;
         } else {
-            selectedNoteOnIndex = -1;
-            repaint();
+            if (!e.mods.isShiftDown()) {
+                selectedNoteIndices.clear();
+            }
+            isBoxSelecting = true;
+            boxStartPos = e.position;
+            boxRect = juce::Rectangle<float>(boxStartPos.x, boxStartPos.y, 0, 0);
         }
+        repaint();
     }
 
     void mouseDrag(const juce::MouseEvent& e) override {
-        if (!hasDragged && e.getDistanceFromDragStart() > 4) {
+        if (isBoxSelecting) {
+            float x1 = std::min(boxStartPos.x, e.position.x);
+            float y1 = std::min(boxStartPos.y, e.position.y);
+            float x2 = std::max(boxStartPos.x, e.position.x);
+            float y2 = std::max(boxStartPos.y, e.position.y);
+            boxRect = juce::Rectangle<float>(x1, y1, std::max(1.0f, x2 - x1), std::max(1.0f, y2 - y1));
+
+            for (const auto& ng : noteGeometry) {
+                if (boxRect.intersects(ng.rect)) {
+                    selectedNoteIndices.insert(ng.noteOnEventIndex);
+                }
+            }
+            repaint();
+        } else if (!hasDragged && e.getDistanceFromDragStart() > 4) {
             hasDragged = true;
             if (onDragStart) onDragStart();
         }
@@ -55,10 +109,11 @@ public:
 
     void mouseUp(const juce::MouseEvent&) override {
         hasDragged = false;
+        isBoxSelecting = false;
+        repaint();
     }
 
     void paint(juce::Graphics& g) override {
-        // Very dark background matching the mockup
         g.fillAll(juce::Colour(0xff0d0e12)); 
         
         int minNote = 127;
@@ -97,6 +152,7 @@ public:
         
         int numSemitones = maxNote - minNote + 1;
         auto bounds = getLocalBounds().toFloat();
+        
         float pianoRollLeft = 55.0f; 
         float drawWidth = bounds.getWidth() - pianoRollLeft;
         float drawHeight = bounds.getHeight();
@@ -109,7 +165,6 @@ public:
             int noteInOctave = midiNote % 12;
             bool isBlackKey = (noteInOctave == 1 || noteInOctave == 3 || noteInOctave == 6 || noteInOctave == 8 || noteInOctave == 10);
             
-            // Highlight in-scale notes
             int scaleType = processor.selectedScale.load();
             int root = processor.selectedKey.load();
             bool inScale = true;
@@ -119,7 +174,6 @@ public:
                 inScale = (std::find(intervals.begin(), intervals.end(), relativeNote) != intervals.end());
             }
             
-            // Grid background row
             if (inScale) {
                 g.setColour(isBlackKey ? juce::Colour(0xff121318) : juce::Colour(0xff17181e));
             } else {
@@ -128,18 +182,15 @@ public:
             
             g.fillRect(pianoRollLeft, y, drawWidth, rowHeight);
             
-            // Faint horizontal grid lines
             g.setColour(juce::Colour(0xff2a2b32));
             g.drawHorizontalLine(static_cast<int>(y), pianoRollLeft, bounds.getWidth());
 
-            // Y-Axis Labels
             g.setColour(juce::Colour(0xffa0a0a0));
             g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
             juce::String noteStr = MidiConverter::midiNoteToString(midiNote);
             g.drawText(noteStr, 0, static_cast<int>(y), static_cast<int>(pianoRollLeft - 15), static_cast<int>(rowHeight), juce::Justification::centredRight);
         }
 
-        // Faint vertical grid lines (seconds)
         g.setColour(juce::Colour(0xff2a2b32));
         int seconds = static_cast<int>(maxTime);
         for (int sec = 1; sec <= seconds; ++sec) {
@@ -147,7 +198,6 @@ public:
             g.drawVerticalLine(static_cast<int>(x), 0.0f, drawHeight);
         }
 
-        // Cache note geometry for hit-testing
         noteGeometry.clear();
 
         struct ActiveNote {
@@ -176,7 +226,7 @@ public:
                             [noteNum](const ActiveNote& an) { return an.noteNumber == noteNum; });
                         
                         if (it != activeNotes.end()) {
-                            bool isSelected = (it->eventIndex == selectedNoteOnIndex);
+                            bool isSelected = (selectedNoteIndices.count(it->eventIndex) > 0);
                             drawNoteBlock(g, it->noteNumber, it->startTime, time, it->velocity,
                                           minNote, maxNote, maxTime, pianoRollLeft, drawWidth, rowHeight,
                                           it->eventIndex, isSelected);
@@ -187,11 +237,19 @@ public:
             }
 
             for (const auto& activeNote : activeNotes) {
-                bool isSelected = (activeNote.eventIndex == selectedNoteOnIndex);
+                bool isSelected = (selectedNoteIndices.count(activeNote.eventIndex) > 0);
                 drawNoteBlock(g, activeNote.noteNumber, activeNote.startTime, processor.recordingTimeSec, activeNote.velocity,
                               minNote, maxNote, maxTime, pianoRollLeft, drawWidth, rowHeight,
                               activeNote.eventIndex, isSelected);
             }
+        }
+
+        // Draw Marquee Box Selection
+        if (isBoxSelecting && !boxRect.isEmpty()) {
+            g.setColour(juce::Colour(0x3333c4c9));
+            g.fillRect(boxRect);
+            g.setColour(juce::Colour(0xff33c4c9));
+            g.drawRect(boxRect, 1.0f);
         }
         
         // Draw Playhead
@@ -204,11 +262,11 @@ public:
             g.fillRect(px - 1.0f, 0.0f, 3.0f, drawHeight);
         }
 
-        // Delete hint
-        if (selectedNoteOnIndex >= 0) {
-            g.setColour(juce::Colour(0xaaf87171));
-            g.setFont(juce::FontOptions(11.0f));
-            g.drawText("Press Delete to remove", getLocalBounds().reduced(8, 4), juce::Justification::bottomRight);
+        if (!selectedNoteIndices.empty()) {
+            g.setColour(juce::Colour(0xffffca58));
+            g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
+            g.drawText("Selected: " + juce::String(selectedNoteIndices.size()) + " notes | Delete to remove | ↑/↓ Transpose | ←/→ Nudge", 
+                       getLocalBounds().reduced(8, 4), juce::Justification::bottomRight);
         }
     }
 
@@ -244,7 +302,6 @@ private:
         noteGeometry.push_back({ rect, eventIndex });
 
         if (isSelected) {
-            // Selected = bright white/red outline + dimmed fill
             g.setColour(juce::Colour(0xfff87171).withAlpha(0.85f));
             g.fillRoundedRectangle(rect, 4.0f);
             g.setColour(juce::Colours::white);

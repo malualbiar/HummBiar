@@ -269,6 +269,9 @@ public:
 
     // Note editing: delete note-on/off pair at a given index
     void deleteNoteAtIndex(int noteOnEventIndex);
+    void deleteSelectedNotes(const std::vector<int>& noteOnIndices);
+    void transposeSelectedNotes(const std::vector<int>& noteOnIndices, int semitoneDelta);
+    void nudgeSelectedNotes(const std::vector<int>& noteOnIndices, double timeDeltaSec);
 
     // Key Detection
     std::atomic<bool>  autoDetectKey { false };
