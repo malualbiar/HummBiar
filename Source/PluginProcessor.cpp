@@ -269,6 +269,12 @@ void HumToMIDIProcessor::applyInputSourceProfile(int sourceIndex) {
     pitchStabilityCents.store(profile.pitchStabilityCents);
     octaveLock.store(profile.octaveLock);
     minNoteDurationMs.store(profile.minNoteDurationMs);
+
+    // If Vocal Scale (Do-Re-Mi) is selected (sourceIndex == 1), auto-enable Major scale snapping if scale is OFF (0)!
+    if (sourceIndex == 1 && selectedScale.load() == 0) {
+        selectedScale.store(1); // 1 = Major Scale
+        applyKeyAndScaleSnapping();
+    }
 }
 
 void HumToMIDIProcessor::startCalibration() {
@@ -616,18 +622,21 @@ void HumToMIDIProcessor::sanitizeRecordedSequence() {
         double dur = nb.endTimeSec - nb.startTimeSec;
 
         bool isGraceNote = false;
-        if (dur < maxGraceNoteSec) {
+        if (dur < 0.055) {
+            // Isolated or transient micro-blip under 55ms
+            isGraceNote = true;
+        } else if (dur < maxGraceNoteSec) {
             if (i > 0) {
                 const auto& prev = merged[i - 1];
                 double prevDur = prev.endTimeSec - prev.startTimeSec;
-                if (prevDur >= 0.120 && (nb.startTimeSec - prev.endTimeSec) <= 0.060) {
+                if (prevDur >= 0.100 && (nb.startTimeSec - prev.endTimeSec) <= 0.080) {
                     isGraceNote = true;
                 }
             }
             if (i + 1 < merged.size()) {
                 const auto& next = merged[i + 1];
                 double nextDur = next.endTimeSec - next.startTimeSec;
-                if (nextDur >= 0.120 && (next.startTimeSec - nb.endTimeSec) <= 0.060) {
+                if (nextDur >= 0.100 && (next.startTimeSec - nb.endTimeSec) <= 0.080) {
                     isGraceNote = true;
                 }
             }
