@@ -7,7 +7,7 @@ public:
     NoteTracker(float sampleRate);
 
     // Processes a pitch result, updating the internal state machine and generating MIDI events
-    void process(const PitchResult& currentPitch, float timeElapsedMs, int sampleOffset, juce::MidiBuffer& midiBuffer, float attackSpeedMs = 18.0f, float pitchStabilityCents = 60.0f, int selectedKey = 0, int selectedScale = 0);
+    void process(const PitchResult& currentPitch, float timeElapsedMs, int sampleOffset, juce::MidiBuffer& midiBuffer, float attackSpeedMs = 18.0f, float pitchStabilityCents = 60.0f, float minNoteDurationMs = 80.0f, int selectedKey = 0, int selectedScale = 0);
 
     int getCurrentNote() const { return currentMidiNote; }
     float getCurrentVelocity() const { return lastVelocity; }
@@ -41,7 +41,7 @@ private:
     float transitionTimeMs = 25.0f; 
     float releaseTimeMs = 35.0f;    
     static constexpr float glottalHangoverMaxMs = 45.0f;
-    static constexpr float minNoteDurationMs = 50.0f;
+    float configuredMinNoteDurationMs = 70.0f;
     
     void sendNoteOn(int note, float velocity, int sampleOffset, juce::MidiBuffer& midiBuffer);
     void sendNoteOff(int note, int sampleOffset, juce::MidiBuffer& midiBuffer);

@@ -126,7 +126,8 @@ void HumToMIDIProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
             
             float atkSpeed = attackSpeedMs.load();
             float stability = pitchStabilityCents.load();
-            noteTracker.process(result, timeElapsedMs, 0, midiMessages, atkSpeed, stability, selectedKey.load(), selectedScale.load());
+            float minDur = minNoteDurationMs.load();
+            noteTracker.process(result, timeElapsedMs, 0, midiMessages, atkSpeed, stability, minDur, selectedKey.load(), selectedScale.load());
 
             // MIDI Recording Logic
             if (isRecordingMidi.load()) {
@@ -185,11 +186,11 @@ void HumToMIDIProcessor::applyPreset(int presetIndex) {
             break;
         case 3: // Fast Melodies / Riffs
             inputSensitivity.store(1.0f);
-            noiseGateCutoff.store(0.0014f);
-            attackSpeedMs.store(14.0f);
-            pitchStabilityCents.store(65.0f);
-            octaveLock.store(0.85f);
-            minNoteDurationMs.store(65.0f);
+            noiseGateCutoff.store(0.0016f);
+            attackSpeedMs.store(16.0f);
+            pitchStabilityCents.store(75.0f);
+            octaveLock.store(0.90f);
+            minNoteDurationMs.store(70.0f);
             break;
         case 4: // Rock-Solid Chords & Bass
             inputSensitivity.store(1.2f);

@@ -3,7 +3,8 @@
 
 NoteTracker::NoteTracker(float sampleRate) : sampleRate(sampleRate) {}
 
-void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, int sampleOffset, juce::MidiBuffer& midiBuffer, float attackSpeedMs, float pitchStabilityCents, int selectedKey, int selectedScale) {
+void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, int sampleOffset, juce::MidiBuffer& midiBuffer, float attackSpeedMs, float pitchStabilityCents, float minNoteDurationMs, int selectedKey, int selectedScale) {
+    configuredMinNoteDurationMs = std::max(30.0f, minNoteDurationMs);
     attackTimeMs = std::max(8.0f, attackSpeedMs);
     transitionTimeMs = std::max(12.0f, attackSpeedMs * 1.5f);
     releaseTimeMs = std::max(18.0f, attackSpeedMs * 1.8f);
@@ -19,7 +20,7 @@ void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, i
 
     // Acoustic Transient Spike Detector: Fast consecutive staccato shots ("Tu-Tu-Tu", "Da-Da-Da")
     float rmsRatio = (prevRms > 0.0001f) ? (pitchResult.rms / prevRms) : 1.0f;
-    bool isAttackTransient = (pitchResult.rms > 0.0008f && rmsRatio >= 1.80f && noteDurationMs >= 35.0f);
+    bool isAttackTransient = (pitchResult.rms > 0.0008f && rmsRatio >= 2.20f && pitchResult.confidence > 0.65f && noteDurationMs >= configuredMinNoteDurationMs && rawNote != currentMidiNote);
 
     switch (currentState) {
         case State::Idle:
@@ -51,8 +52,8 @@ void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, i
 
         case State::Sustaining:
             noteDurationMs += timeElapsedMs;
-            if (isAttackTransient && rawNote != -1) {
-                // Retrigger close shot note on energy transient
+            if (isAttackTransient && rawNote != -1 && rawNote != currentMidiNote) {
+                // Retrigger distinct staccato shot note on energy transient
                 sendNoteOff(currentMidiNote, sampleOffset, midiBuffer);
                 currentMidiNote = rawNote;
                 noteDurationMs = 0.0f;
@@ -95,7 +96,7 @@ void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, i
                 currentState = State::Hangover;
             } else if (rawNote == targetMidiNote) {
                 stateTimeMs += timeElapsedMs;
-                if (stateTimeMs >= transitionTimeMs) {
+                if (stateTimeMs >= transitionTimeMs && noteDurationMs >= configuredMinNoteDurationMs) {
                     sendNoteOff(currentMidiNote, sampleOffset, midiBuffer);
                     currentMidiNote = targetMidiNote;
                     noteDurationMs = 0.0f;
@@ -112,9 +113,10 @@ void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, i
             break;
 
         case State::Release:
+            noteDurationMs += timeElapsedMs;
             if (rawNote == -1) {
                 stateTimeMs += timeElapsedMs;
-                if (stateTimeMs >= releaseTimeMs) {
+                if (stateTimeMs >= releaseTimeMs && noteDurationMs >= configuredMinNoteDurationMs) {
                     sendNoteOff(currentMidiNote, sampleOffset, midiBuffer);
                     currentMidiNote = -1;
                     currentState = State::Idle;
@@ -122,11 +124,13 @@ void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, i
             } else if (rawNote == currentMidiNote) {
                 currentState = State::Sustaining;
             } else {
-                sendNoteOff(currentMidiNote, sampleOffset, midiBuffer);
-                currentMidiNote = -1;
-                targetMidiNote = rawNote;
-                stateTimeMs = 0.0f;
-                currentState = State::Attack;
+                if (noteDurationMs >= configuredMinNoteDurationMs) {
+                    sendNoteOff(currentMidiNote, sampleOffset, midiBuffer);
+                    currentMidiNote = -1;
+                    targetMidiNote = rawNote;
+                    stateTimeMs = 0.0f;
+                    currentState = State::Attack;
+                }
             }
             break;
     }
