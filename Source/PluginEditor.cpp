@@ -231,6 +231,8 @@ HumToMIDIEditor::HumToMIDIEditor(HumToMIDIProcessor& p)
     minNoteSlider.setValue(audioProcessor.minNoteDurationMs.load());
     minNoteSlider.onValueChange = [this] {
         audioProcessor.minNoteDurationMs.store(static_cast<float>(minNoteSlider.getValue()));
+        audioProcessor.applyKeyAndScaleSnapping();
+        visualizer.repaint();
     };
 
     // Status Labels

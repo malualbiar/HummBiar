@@ -4,10 +4,10 @@
 NoteTracker::NoteTracker(float sampleRate) : sampleRate(sampleRate) {}
 
 void NoteTracker::process(const PitchResult& pitchResult, float timeElapsedMs, int sampleOffset, juce::MidiBuffer& midiBuffer, float attackSpeedMs, float pitchStabilityCents, float minNoteDurationMs, int selectedKey, int selectedScale) {
-    configuredMinNoteDurationMs = std::max(30.0f, minNoteDurationMs);
-    attackTimeMs = std::max(8.0f, attackSpeedMs);
-    transitionTimeMs = std::max(12.0f, attackSpeedMs * 1.5f);
-    releaseTimeMs = std::max(18.0f, attackSpeedMs * 1.8f);
+    configuredMinNoteDurationMs = std::max(35.0f, minNoteDurationMs);
+    attackTimeMs = std::max(20.0f, attackSpeedMs);
+    transitionTimeMs = std::max(24.0f, attackSpeedMs * 1.5f);
+    releaseTimeMs = std::max(22.0f, attackSpeedMs * 1.8f);
     float deadband = std::max(0.35f, pitchStabilityCents / 100.0f);
     
     int rawNote = -1;

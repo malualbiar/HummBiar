@@ -230,29 +230,7 @@ void HumToMIDIProcessor::setKeyAndScale(int key, int scale) {
 }
 
 void HumToMIDIProcessor::applyKeyAndScaleSnapping() {
-    const juce::ScopedLock sl(recordLock);
-    int key = selectedKey.load();
-    int scale = selectedScale.load();
-
-    if (rawRecordedSequence.getNumEvents() == 0 && recordedSequence.getNumEvents() > 0) {
-        rawRecordedSequence = recordedSequence;
-    }
-
-    recordedSequence.clear();
-
-    for (int i = 0; i < rawRecordedSequence.getNumEvents(); ++i) {
-        const auto* event = rawRecordedSequence.getEventPointer(i);
-        if (!event) continue;
-
-        auto msg = event->message;
-        if (msg.isNoteOn() || msg.isNoteOff()) {
-            int originalNote = msg.getNoteNumber();
-            int snappedNote = MidiConverter::snapToScale(originalNote, key, scale);
-            msg.setNoteNumber(snappedNote);
-        }
-        recordedSequence.addEvent(msg);
-    }
-    recordedSequence.updateMatchedPairs();
+    sanitizeRecordedSequence();
 }
 
 void HumToMIDIProcessor::startRecording() {
@@ -273,14 +251,15 @@ void HumToMIDIProcessor::stopRecording() {
     }
     isRecordingMidi.store(false);
     
-    // Keep a raw copy for dynamic scale re-snapping
+    // Keep a raw copy for dynamic scale re-snapping & de-glitching
     rawRecordedSequence = recordedSequence;
+
+    // Run automatic 5-stage de-glitcher on sequence immediately when recording stops
+    sanitizeRecordedSequence();
 
     // Auto-detect key if enabled
     if (autoDetectKey.load()) {
         runKeyDetection();
-    } else {
-        applyKeyAndScaleSnapping();
     }
 }
 
@@ -358,24 +337,14 @@ void HumToMIDIProcessor::deleteNoteAtIndex(int noteOnEventIndex) {
     }
 }
 
-void HumToMIDIProcessor::writeMidiFile(const juce::File& file) {
+void HumToMIDIProcessor::sanitizeRecordedSequence() {
     const juce::ScopedLock sl(recordLock);
-    
-    juce::MidiFile midiFile;
-    midiFile.setTicksPerQuarterNote(960);
-    
-    juce::MidiMessageSequence trackSequence;
-    
-    double bpm = hostBpm.load();
-    if (bpm <= 10.0 || bpm > 999.0) bpm = 120.0;
-    
-    // Add tempo event at start matching host BPM
-    int microsecsPerQuarter = static_cast<int>(std::round(60000000.0 / bpm));
-    trackSequence.addEvent(juce::MidiMessage::tempoMetaEvent(microsecsPerQuarter), 0.0);
-    
-    double ticksPerSecond = (bpm / 60.0) * 960.0;
-    
-    // Pair up note events from recordedSequence
+    if (rawRecordedSequence.getNumEvents() == 0 && recordedSequence.getNumEvents() > 0) {
+        rawRecordedSequence = recordedSequence;
+    }
+
+    recordedSequence.clear();
+
     struct NoteBlock {
         int noteNumber;
         double startTimeSec;
@@ -384,19 +353,27 @@ void HumToMIDIProcessor::writeMidiFile(const juce::File& file) {
     };
     std::vector<NoteBlock> noteBlocks;
     std::vector<std::pair<int, std::pair<double, float>>> activeNotes;
-    
-    for (int i = 0; i < recordedSequence.getNumEvents(); ++i) {
-        if (auto* event = recordedSequence.getEventPointer(i)) {
+
+    int key = selectedKey.load();
+    int scale = selectedScale.load();
+
+    for (int i = 0; i < rawRecordedSequence.getNumEvents(); ++i) {
+        if (auto* event = rawRecordedSequence.getEventPointer(i)) {
             auto msg = event->message;
-            if (msg.isNoteOn()) {
-                activeNotes.push_back({ msg.getNoteNumber(), { msg.getTimeStamp(), msg.getVelocity() / 127.0f } });
-            } else if (msg.isNoteOff()) {
+            if (msg.isNoteOn() || msg.isNoteOff()) {
                 int noteNum = msg.getNoteNumber();
-                for (auto it = activeNotes.begin(); it != activeNotes.end(); ++it) {
-                    if (it->first == noteNum) {
-                        noteBlocks.push_back({ noteNum, it->second.first, msg.getTimeStamp(), it->second.second });
-                        activeNotes.erase(it);
-                        break;
+                if (scale != 0) {
+                    noteNum = MidiConverter::snapToScale(noteNum, key, scale);
+                }
+                if (msg.isNoteOn()) {
+                    activeNotes.push_back({ noteNum, { msg.getTimeStamp(), msg.getVelocity() / 127.0f } });
+                } else if (msg.isNoteOff()) {
+                    for (auto it = activeNotes.begin(); it != activeNotes.end(); ++it) {
+                        if (it->first == noteNum) {
+                            noteBlocks.push_back({ noteNum, it->second.first, msg.getTimeStamp(), it->second.second });
+                            activeNotes.erase(it);
+                            break;
+                        }
                     }
                 }
             }
@@ -405,22 +382,18 @@ void HumToMIDIProcessor::writeMidiFile(const juce::File& file) {
     for (const auto& an : activeNotes) {
         noteBlocks.push_back({ an.first, an.second.first, recordingTimeSec, an.second.second });
     }
-    
+
     std::sort(noteBlocks.begin(), noteBlocks.end(), [](const NoteBlock& a, const NoteBlock& b) {
         return a.startTimeSec < b.startTimeSec;
     });
-    
-    float atkSpeed = attackSpeedMs.load();
-    float mergeGapSec = std::max(0.035f, std::min(0.120f, (atkSpeed / 18.0f) * 0.065f));
-    float maxVibratoDipSec = std::max(0.060f, std::min(0.150f, (atkSpeed / 18.0f) * 0.100f));
-    float maxGraceNoteSec = std::max(0.035f, std::min(0.080f, (atkSpeed / 18.0f) * 0.055f));
-    float minDurationSec = std::max(0.035f, minNoteDurationMs.load() / 1000.0f);
 
-    // -------------------------------------------------------------
+    float atkSpeed = attackSpeedMs.load();
+    float mergeGapSec = std::max(0.040f, std::min(0.120f, (atkSpeed / 18.0f) * 0.065f));
+    float maxVibratoDipSec = std::max(0.060f, std::min(0.150f, (atkSpeed / 18.0f) * 0.100f));
+    float maxGraceNoteSec = std::max(0.045f, std::min(0.090f, (atkSpeed / 18.0f) * 0.065f));
+    float minDurationSec = std::max(0.040f, minNoteDurationMs.load() / 1000.0f);
+
     // STAGE 1: Monophonic Time-Collision & Subharmonic Glitch Resolver
-    // If two notes start within collision window or overlap in time:
-    // Keep ONLY the primary longer/stronger note and discard the collision artifact.
-    // -------------------------------------------------------------
     float collisionWindowSec = std::max(0.045f, (atkSpeed / 18.0f) * 0.060f);
     std::vector<NoteBlock> nonOverlapping;
     for (const auto& nb : noteBlocks) {
@@ -433,38 +406,32 @@ void HumToMIDIProcessor::writeMidiFile(const juce::File& file) {
             double prevDur = prev.endTimeSec - prev.startTimeSec;
             double currDur = nb.endTimeSec - nb.startTimeSec;
             if (currDur > prevDur) {
-                prev = nb; // Replace shorter/subharmonic glitch with the real note
+                prev = nb;
             }
         } else {
             nonOverlapping.push_back(nb);
         }
     }
 
-    // -------------------------------------------------------------
-    // STAGE 2: Vocal Vibrato & Micro-Trill Flattener (e.g. B2 -> A#2 -> B2)
-    // If pitch dips by 1-2 semitones for < maxVibratoDipSec between identical target notes,
-    // flatten the dip to the target note so it doesn't split the note into pieces!
-    // -------------------------------------------------------------
+    // STAGE 2: Vocal Vibrato & Micro-Trill Flattener
     std::vector<NoteBlock> flattened = nonOverlapping;
     if (flattened.size() >= 3) {
         for (size_t i = 1; i + 1 < flattened.size(); ++i) {
             auto& prev = flattened[i - 1];
             auto& curr = flattened[i];
             auto& next = flattened[i + 1];
-            
+
             double currDur = curr.endTimeSec - curr.startTimeSec;
             int diff1 = std::abs(curr.noteNumber - prev.noteNumber);
             int diff2 = std::abs(curr.noteNumber - next.noteNumber);
-            
+
             if (prev.noteNumber == next.noteNumber && diff1 <= 2 && diff2 <= 2 && currDur <= maxVibratoDipSec) {
-                curr.noteNumber = prev.noteNumber; // Flatten vibrato wobble
+                curr.noteNumber = prev.noteNumber;
             }
         }
     }
 
-    // -------------------------------------------------------------
-    // STAGE 3: Merge Same-Pitch Legato Notes (preserves fast staccato gaps)
-    // -------------------------------------------------------------
+    // STAGE 3: Merge Same-Pitch Legato Notes
     std::vector<NoteBlock> merged;
     for (const auto& nb : flattened) {
         if (!merged.empty() && 
@@ -477,71 +444,108 @@ void HumToMIDIProcessor::writeMidiFile(const juce::File& file) {
         }
     }
 
-    // -------------------------------------------------------------
-    // STAGE 4: Onset Grace Note / Release Tail Absorber
-    // If a short note (< maxGraceNoteSec) is directly adjacent (<= 50ms) to a longer note,
-    // it was an attack scoop (e.g. F3 before E3) or release droop - purge it!
-    // -------------------------------------------------------------
+    // STAGE 4: Onset Grace Note & Release Tail Absorber
     std::vector<NoteBlock> cleanNotes;
     for (size_t i = 0; i < merged.size(); ++i) {
         const auto& nb = merged[i];
         double dur = nb.endTimeSec - nb.startTimeSec;
-        
+
         bool isGraceNote = false;
         if (dur < maxGraceNoteSec) {
             if (i > 0) {
                 const auto& prev = merged[i - 1];
                 double prevDur = prev.endTimeSec - prev.startTimeSec;
-                if (prevDur >= 0.140 && (nb.startTimeSec - prev.endTimeSec) <= 0.050) {
-                    isGraceNote = true; // Release tail droop
+                if (prevDur >= 0.120 && (nb.startTimeSec - prev.endTimeSec) <= 0.060) {
+                    isGraceNote = true;
                 }
             }
             if (i + 1 < merged.size()) {
                 const auto& next = merged[i + 1];
                 double nextDur = next.endTimeSec - next.startTimeSec;
-                if (nextDur >= 0.140 && (next.startTimeSec - nb.endTimeSec) <= 0.050) {
-                    isGraceNote = true; // Attack onset scoop (e.g. F3 before E3)
+                if (nextDur >= 0.120 && (next.startTimeSec - nb.endTimeSec) <= 0.060) {
+                    isGraceNote = true;
                 }
             }
         }
-        
+
         if (!isGraceNote) {
             cleanNotes.push_back(nb);
         }
     }
 
-    // -------------------------------------------------------------
-    // STAGE 5: Minimum Duration Filter & Dynamic User Threshold
-    // -------------------------------------------------------------
-    std::vector<NoteBlock> monoNotes;
-    for (const auto& nb : cleanNotes) {
-        if ((nb.endTimeSec - nb.startTimeSec) >= minDurationSec) {
-            monoNotes.push_back(nb);
+    // STAGE 5: Minimum Duration Filter & Re-building clean sequence
+    for (const auto& note : cleanNotes) {
+        if ((note.endTimeSec - note.startTimeSec) >= minDurationSec) {
+            juce::uint8 vel = static_cast<juce::uint8>(juce::jlimit(1, 127, static_cast<int>(note.velocity * 127.0f)));
+            auto onMsg = juce::MidiMessage::noteOn(1, note.noteNumber, vel);
+            onMsg.setTimeStamp(note.startTimeSec);
+            recordedSequence.addEvent(onMsg);
+
+            auto offMsg = juce::MidiMessage::noteOff(1, note.noteNumber);
+            offMsg.setTimeStamp(note.endTimeSec);
+            recordedSequence.addEvent(offMsg);
         }
     }
+
+    recordedSequence.updateMatchedPairs();
+}
+
+void HumToMIDIProcessor::writeMidiFile(const juce::File& file) {
+    const juce::ScopedLock sl(recordLock);
     
+    juce::MidiFile midiFile;
+    midiFile.setTicksPerQuarterNote(960);
+    
+    juce::MidiMessageSequence trackSequence;
+    
+    double bpm = hostBpm.load();
+    if (bpm <= 10.0 || bpm > 999.0) bpm = 120.0;
+    
+    int microsecsPerQuarter = static_cast<int>(std::round(60000000.0 / bpm));
+    trackSequence.addEvent(juce::MidiMessage::tempoMetaEvent(microsecsPerQuarter), 0.0);
+    
+    double ticksPerSecond = (bpm / 60.0) * 960.0;
+
     int chordMode = selectedChordMode.load();
     int keyRoot = selectedKey.load();
     int scaleType = selectedScale.load();
     int quantizeGrid = selectedQuantize.load();
     float quantStrength = quantizeStrength.load();
 
-    for (auto note : monoNotes) {
-        // Apply Rhythmic Quantization
-        MidiConverter::quantizeNoteTimes(note.startTimeSec, note.endTimeSec, bpm, quantizeGrid, quantStrength);
+    std::vector<std::pair<int, std::pair<double, float>>> activeNotes;
+    for (int i = 0; i < recordedSequence.getNumEvents(); ++i) {
+        if (auto* event = recordedSequence.getEventPointer(i)) {
+            auto msg = event->message;
+            if (msg.isNoteOn()) {
+                activeNotes.push_back({ msg.getNoteNumber(), { msg.getTimeStamp(), msg.getVelocity() / 127.0f } });
+            } else if (msg.isNoteOff()) {
+                int noteNum = msg.getNoteNumber();
+                for (auto it = activeNotes.begin(); it != activeNotes.end(); ++it) {
+                    if (it->first == noteNum) {
+                        double startSec = it->second.first;
+                        double endSec = msg.getTimeStamp();
+                        float velFloat = it->second.second;
+                        activeNotes.erase(it);
 
-        // Apply Diatonic Scale Chord Generator
-        std::vector<int> chordNotes = MidiConverter::generateScaleChord(note.noteNumber, keyRoot, scaleType, chordMode);
+                        // Apply Rhythmic Quantization
+                        MidiConverter::quantizeNoteTimes(startSec, endSec, bpm, quantizeGrid, quantStrength);
 
-        for (int chordNote : chordNotes) {
-            juce::uint8 vel = static_cast<juce::uint8>(juce::jlimit(1, 127, static_cast<int>(note.velocity * 127.0f)));
-            auto onMsg = juce::MidiMessage::noteOn(1, chordNote, vel);
-            onMsg.setTimeStamp(note.startTimeSec * ticksPerSecond);
-            trackSequence.addEvent(onMsg);
-            
-            auto offMsg = juce::MidiMessage::noteOff(1, chordNote);
-            offMsg.setTimeStamp(note.endTimeSec * ticksPerSecond);
-            trackSequence.addEvent(offMsg);
+                        // Apply Diatonic Scale Chord Generator
+                        std::vector<int> chordNotes = MidiConverter::generateScaleChord(noteNum, keyRoot, scaleType, chordMode);
+                        for (int chordNote : chordNotes) {
+                            juce::uint8 vel = static_cast<juce::uint8>(juce::jlimit(1, 127, static_cast<int>(velFloat * 127.0f)));
+                            auto onMsg = juce::MidiMessage::noteOn(1, chordNote, vel);
+                            onMsg.setTimeStamp(startSec * ticksPerSecond);
+                            trackSequence.addEvent(onMsg);
+                            
+                            auto offMsg = juce::MidiMessage::noteOff(1, chordNote);
+                            offMsg.setTimeStamp(endSec * ticksPerSecond);
+                            trackSequence.addEvent(offMsg);
+                        }
+                        break;
+                    }
+                }
+            }
         }
     }
     
