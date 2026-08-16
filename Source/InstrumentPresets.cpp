@@ -14,6 +14,18 @@ InputSourceProfile InstrumentPresets::getProfile(InputSourceType type) {
                 80.0f      // HPF Cutoff Hz
             };
 
+        case InputSourceType::VocalSolfege:
+            return {
+                "Vocal Scale (Do-Re-Mi)",
+                1.1f,      // Sensitivity
+                0.0012f,   // Noise Gate Cutoff
+                14.0f,     // 14ms Attack Speed for fast scale steps
+                60.0f,     // 60c Pitch Stability Cents
+                0.92f,     // 0.92 Octave Lock
+                65.0f,     // 65ms Min Note Duration (prevents glide scoops)
+                90.0f      // 90Hz HPF Cutoff Hz
+            };
+
         case InputSourceType::Whistling:
             return {
                 "Whistling",
@@ -80,13 +92,14 @@ InputSourceProfile InstrumentPresets::getProfile(InputSourceType type) {
 }
 
 InputSourceProfile InstrumentPresets::getProfileByIndex(int index) {
-    if (index < 0 || index > 5) index = 0;
+    if (index < 0 || index > 6) index = 0;
     return getProfile(static_cast<InputSourceType>(index));
 }
 
 std::vector<std::string> InstrumentPresets::getSourceNames() {
     return {
         "Vocal / Humming",
+        "Vocal Scale (Do-Re-Mi)",
         "Whistling",
         "Guitar / Plucked",
         "Bass / Low Hum",

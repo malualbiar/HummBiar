@@ -4,6 +4,7 @@
 
 enum class InputSourceType {
     VocalLead = 0,
+    VocalSolfege,
     Whistling,
     Guitar,
     Bass,

@@ -452,7 +452,21 @@ void HumToMIDIEditor::resized() {
     auto footer = bounds.removeFromBottom(130);
     auto controlBar = footer.removeFromTop(75);
     
-    // 7 Knobs on the right of controlBar
+    // Top Row of footer: Dropdowns (Sound, Chord Mode, Quantize)
+    auto dropRow = controlBar.removeFromLeft(360);
+    dropRow.removeFromLeft(8);
+    waveformLabel.setBounds(dropRow.removeFromLeft(42).reduced(0, 24));
+    waveformSelector.setBounds(dropRow.removeFromLeft(75).reduced(0, 22));
+    dropRow.removeFromLeft(8);
+
+    chordLabel.setBounds(dropRow.removeFromLeft(42).reduced(0, 24));
+    chordSelector.setBounds(dropRow.removeFromLeft(95).reduced(0, 22));
+    dropRow.removeFromLeft(8);
+
+    quantizeLabel.setBounds(dropRow.removeFromLeft(50).reduced(0, 24));
+    quantizeSelector.setBounds(dropRow.removeFromLeft(80).reduced(0, 22));
+
+    // Knobs on the right of controlBar
     controlBar.removeFromRight(10);
     auto placeKnob = [&](juce::Slider& s, juce::Label& l, int w = 62) {
         auto area = controlBar.removeFromRight(w);
@@ -466,7 +480,6 @@ void HumToMIDIEditor::resized() {
     placeKnob(attackSpeedSlider, attackSpeedLabel);
     placeKnob(noiseGateSlider, noiseGateLabel);
     placeKnob(sensitivitySlider, sensitivityLabel);
-    placeKnob(quantizeStrengthSlider, quantizeStrengthLabel);
 
     // Status Bar: 4 info columns, then Key / Scale / AUTO KEY
     auto statusArea = footer;
