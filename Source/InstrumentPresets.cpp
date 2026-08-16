@@ -86,11 +86,11 @@ InputSourceProfile InstrumentPresets::getProfileByIndex(int index) {
 
 std::vector<std::string> InstrumentPresets::getSourceNames() {
     return {
-        "🎤 Vocal / Humming",
-        "😙 Whistling",
-        "🎸 Guitar / Plucked",
-        "🎸 Bass / Low Hum",
-        "🎷 Wind / Brass",
-        "🥁 Beatbox / Percussion"
+        "Vocal / Humming",
+        "Whistling",
+        "Guitar / Plucked",
+        "Bass / Low Hum",
+        "Wind / Brass",
+        "Beatbox / Percussion"
     };
 }

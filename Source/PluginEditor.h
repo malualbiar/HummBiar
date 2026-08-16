@@ -524,21 +524,9 @@ public:
         g.setColour(juce::Colour(0xff2a2b32));
         g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 
-        float cy = bounds.getCentreY();
-        g.setColour(juce::Colour(0xffffca58));
-
-        // Arrow pointing down into document / tray
-        juce::Path arrow;
-        float x = bounds.getX() + 15.0f;
-        arrow.addRectangle(x - 1.5f, cy - 6.0f, 3.0f, 7.0f);
-        arrow.addTriangle(x - 4.5f, cy + 1.0f, x + 4.5f, cy + 1.0f, x, cy + 6.0f);
-        g.fillPath(arrow);
-
         g.setColour(juce::Colours::white);
         g.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
-        auto textBounds = bounds;
-        textBounds.removeFromLeft(24.0f);
-        g.drawText("MIDI", textBounds, juce::Justification::centredLeft);
+        g.drawText("MIDI", bounds, juce::Justification::centred);
     }
 };
 
@@ -558,32 +546,14 @@ public:
         g.setColour(juce::Colour(0xff2a2b32));
         g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
 
-        float cy = bounds.getCentreY();
-        g.setColour(isCal ? juce::Colours::black : juce::Colour(0xff33c4c9));
-
-        // Lightning bolt vector
-        juce::Path bolt;
-        float x = bounds.getX() + 14.0f;
-        bolt.startNewSubPath(x + 1.0f, cy - 6.0f);
-        bolt.lineTo(x - 4.0f, cy + 1.0f);
-        bolt.lineTo(x, cy + 1.0f);
-        bolt.lineTo(x - 1.0f, cy + 6.0f);
-        bolt.lineTo(x + 4.0f, cy - 1.0f);
-        bolt.lineTo(x, cy - 1.0f);
-        bolt.closeSubPath();
-        g.fillPath(bolt);
-
         g.setColour(isCal ? juce::Colours::black : juce::Colours::white);
         g.setFont(juce::FontOptions(12.0f).withStyle("Bold"));
 
-        auto textBounds = bounds;
-        textBounds.removeFromLeft(22.0f);
-
         if (isCal) {
             int pct = static_cast<int>(processor.calibrationProgress.load() * 100.0f);
-            g.drawText(juce::String(pct) + "%", textBounds, juce::Justification::centredLeft);
+            g.drawText(juce::String(pct) + "%", bounds, juce::Justification::centred);
         } else {
-            g.drawText("CAL", textBounds, juce::Justification::centredLeft);
+            g.drawText("CAL", bounds, juce::Justification::centred);
         }
     }
 
